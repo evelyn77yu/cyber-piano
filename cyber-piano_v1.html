@@ -1,0 +1,495 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>ZenType Cyber-Piano Pro</title>
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+    <style>
+        :root { --neon: #00F3FF; --magenta: #FF00FF; --bg: #050505; }
+        body { background: var(--bg); color: #EEE; font-family: 'JetBrains Mono', monospace; overflow: hidden; }
+        .sidebar { width: 300px; border-right: 1px solid rgba(0, 243, 255, 0.1); background: #080808; height: 100vh; overflow-y: auto; }
+        .cyber-panel { background: rgba(15, 15, 15, 0.95); border: 1px solid rgba(0, 243, 255, 0.2); border-radius: 16px; }
+        .chapter-item { padding: 10px 20px; font-size: 11px; cursor: pointer; border-bottom: 1px solid rgba(255,255,255,0.02); color: #666; transition: 0.3s; }
+        .chapter-item:hover, .chapter-item.active { color: var(--neon); background: rgba(0, 243, 255, 0.05); border-left: 3px solid var(--neon); }
+        .echo-slot { height: 40px; font-size: 1.1rem; color: var(--neon); text-shadow: 0 0 10px var(--neon); border-bottom: 1px solid rgba(0, 243, 255, 0.1); margin-bottom: 14px; display: flex; align-items: center; overflow: hidden; }
+        .char { position: relative; transition: all 0.1s; color: #333; }
+        .char.completed { color: #FFF; text-shadow: 0 0 8px var(--neon); }
+        .char.current { border-bottom: 2px solid var(--neon); background: rgba(0, 243, 255, 0.1); }
+        .char.error { color: var(--magenta) !important; animation: shake 0.2s; text-shadow: 0 0 10px var(--magenta); }
+        @keyframes shake { 0%, 100% { transform: translateX(0); } 25% { transform: translateX(-4px); } 75% { transform: translateX(4px); } }
+        .mode-btn { font-size: 10px; padding: 4px 10px; border: 1px solid #333; border-radius: 4px; transition: 0.3s; }
+        .mode-btn.active { border-color: var(--neon); color: var(--neon); box-shadow: 0 0 10px var(--neon); }
+    </style>
+</head>
+<body class="flex">
+    <div id="app" class="flex w-full h-screen">
+        <aside class="sidebar flex flex-col z-20">
+            <div class="p-6 border-b border-white/5">
+                <p class="text-[10px] text-cyan-500 font-bold tracking-[0.3em] mb-4 uppercase">System Outline</p>
+                <div class="flex gap-2">
+                    <button @click="setMode('seq')" :class="['mode-btn', mode === 'seq' ? 'active' : '']">顺序</button>
+                    <button @click="setMode('shuf')" :class="['mode-btn', mode === 'shuf' ? 'active' : '']">随机</button>
+                </div>
+            </div>
+            <div class="flex-1 overflow-y-auto">
+                <div v-for="(chap, idx) in chapters" :key="idx" 
+                     @click="jumpToChapter(chap)" 
+                     :class="['chapter-item', curChap === chap.title ? 'active' : '']">
+                    {{ chap.title }}
+                </div>
+            </div>
+        </aside>
+
+        <main class="flex-1 flex flex-col items-center justify-start p-12 pt-32 relative">
+            <header class="fixed top-8 left-[340px] right-12 flex justify-between items-center cyber-panel px-8 py-4 z-10">
+                <label class="cursor-pointer bg-white/5 border border-white/10 px-5 py-2 rounded-lg text-xs hover:border-cyan-500 transition-all">
+                    IMPORT_PDF_CORE <input type="file" class="hidden" @change="handleUpload">
+                </label>
+                <div class="flex gap-12 items-center">
+                    <div class="text-right"><p class="text-[9px] text-[#FF00FF]">ACCURACY</p><p class="text-2xl font-bold">{{ accuracy }}%</p></div>
+                    <div class="text-right border-l border-white/10 pl-12"><p class="text-[9px] text-[#00F3FF]">WPM</p><p class="text-2xl font-bold">{{ wpm }}</p></div>
+                </div>
+            </header>
+
+            <div v-if="curText" class="w-full max-w-4xl cyber-panel p-10 mt-4">
+                <div class="echo-slot">
+                    <span class="truncate">{{ userInput }}</span>
+                    <span class="ml-1 w-2 h-6 bg-cyan-500 animate-pulse shadow-[0_0_10px_#00F3FF]"></span>
+                </div>
+
+                <div ref="textScrollEl" class="text-lg leading-[2.0] select-none mb-6 tracking-tight overflow-y-auto pr-2 max-h-[calc(100vh-270px)]">
+                    <span v-for="(char, index) in curText" 
+                          :key="index" 
+                          :class="['char', getCharStatus(index), (isError && index === userInput.length) ? 'error' : '']">
+                        {{ char }}
+                    </span>
+                </div>
+
+                <div class="pt-6 border-t border-white/5 flex justify-between items-center opacity-40 text-[10px] tracking-widest">
+                    <span>CHAPTER: {{ curChap || 'ANALYZING...' }} · SECTION: {{ curIdx + 1 }}/{{ passages.length }}</span>
+                    <button @click="next(true)" class="hover:text-cyan-400 underline uppercase">Skip Section</button>
+                </div>
+            </div>
+            
+            <div v-else class="opacity-5 text-8xl font-black italic tracking-tighter">CYBER_PIANO</div>
+        </main>
+    </div>
+
+    <script>
+        const { createApp, ref, computed, onMounted, nextTick } = Vue;
+
+	        createApp({
+	            setup() {
+	                const passages = ref([]); // [{ text, pageIndex }]
+	                const chapters = ref([]); // [{ title, pageIndex, passageIndex }]
+	                const mode = ref('seq'); // 'seq' | 'shuf'
+	                const curIdx = ref(0);
+	                const curText = ref('');
+	                const userInput = ref('');
+	                const curChap = ref('');
+	                const errors = ref(0);
+	                const isError = ref(false);
+	                const start = ref(null);
+	                const pdfRef = ref(null);
+	                const textScrollEl = ref(null);
+
+	                // --- 增强钢琴引擎 ---
+	                const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+	                const melody = [64,63,64,63,64,59,62,60,57,0,45,52,57,60,0,52,56,57,60,0,52,64,63,64,63,64,59,62,60,57,67,65,64,62,65,64,62,60,64,62,60,59];
+	                const bass = [45, 40, 45, 48, 44, 45];
+	                let nIdx = 0;
+
+	                const master = audioCtx.createGain();
+	                master.gain.value = 0.9;
+	                master.connect(audioCtx.destination);
+
+	                const convolver = audioCtx.createConvolver();
+	                const dryGain = audioCtx.createGain();
+	                const wetGain = audioCtx.createGain();
+	                dryGain.gain.value = 0.85;
+	                wetGain.gain.value = 0.25;
+	                dryGain.connect(master);
+	                wetGain.connect(convolver);
+	                convolver.connect(master);
+
+	                const makeImpulseResponse = (ctx, seconds = 2.5, decay = 2.2) => {
+	                    const rate = ctx.sampleRate;
+	                    const length = Math.max(1, Math.floor(rate * seconds));
+	                    const impulse = ctx.createBuffer(2, length, rate);
+	                    for (let ch = 0; ch < impulse.numberOfChannels; ch++) {
+	                        const data = impulse.getChannelData(ch);
+	                        for (let i = 0; i < length; i++) {
+	                            const t = i / length;
+	                            data[i] = (Math.random() * 2 - 1) * Math.pow(1 - t, decay);
+	                        }
+	                    }
+	                    return impulse;
+	                };
+	                convolver.buffer = makeImpulseResponse(audioCtx, 2.8, 2.4);
+
+	                const playPiano = (midi) => {
+	                    if (midi === 0) return;
+	                    const freq = 440 * Math.pow(2, (midi - 69) / 12);
+	                    const osc = audioCtx.createOscillator();
+	                    const gain = audioCtx.createGain();
+	                    osc.type = 'triangle';
+	                    osc.frequency.value = freq;
+	                    osc.detune.value = (Math.random() * 6 - 3);
+	                    gain.gain.setValueAtTime(0.0001, audioCtx.currentTime);
+	                    gain.gain.exponentialRampToValueAtTime(0.12, audioCtx.currentTime + 0.01);
+	                    gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 1.2);
+	                    osc.connect(gain);
+	                    gain.connect(dryGain);
+	                    gain.connect(wetGain);
+	                    osc.start(); osc.stop(audioCtx.currentTime + 1.2);
+
+	                    // 伴奏逻辑
+	                    if (nIdx % 5 === 0) {
+	                        const bOsc = audioCtx.createOscillator(); const bG = audioCtx.createGain();
+	                        bOsc.frequency.value = 440 * Math.pow(2, (bass[Math.floor(nIdx/5)%bass.length]-69)/12);
+	                        bOsc.type = 'sine';
+	                        bG.gain.setValueAtTime(0.0001, audioCtx.currentTime);
+	                        bG.gain.exponentialRampToValueAtTime(0.05, audioCtx.currentTime + 0.02);
+	                        bG.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 2);
+	                        bOsc.connect(bG);
+	                        bG.connect(dryGain);
+	                        bG.connect(wetGain);
+	                        bOsc.start(); bOsc.stop(audioCtx.currentTime + 2);
+	                    }
+	                };
+
+	                const normalizeTitle = (s) => (s || "").replace(/\s+/g, " ").trim().toLowerCase();
+	                const dedupeByTitle = (items) => {
+	                    const seen = new Set();
+	                    const out = [];
+	                    for (const it of items) {
+	                        const key = normalizeTitle(it.title);
+	                        if (!key || key.length < 4) continue;
+	                        if (seen.has(key)) continue;
+	                        seen.add(key);
+	                        out.push(it);
+	                    }
+	                    return out;
+	                };
+
+	                const flattenOutline = (items) => {
+	                    const out = [];
+	                    const walk = (arr) => {
+	                        if (!arr) return;
+	                        for (const it of arr) {
+	                            out.push({ title: it.title, dest: it.dest });
+	                            if (it.items && it.items.length) walk(it.items);
+	                        }
+	                    };
+	                    walk(items);
+	                    return out;
+	                };
+
+	                const extractLinesFromPage = async (page) => {
+	                    const content = await page.getTextContent();
+	                    const items = (content.items || [])
+	                        .map((t) => ({
+	                            str: (t.str || "").replace(/\s+/g, " ").trim(),
+	                            x: Array.isArray(t.transform) ? t.transform[4] : 0,
+	                            y: Array.isArray(t.transform) ? t.transform[5] : 0,
+	                        }))
+	                        .filter((t) => t.str);
+	                    items.sort((a, b) => (b.y - a.y) || (a.x - b.x));
+
+	                    const lines = [];
+	                    let cur = [];
+	                    let prevY = null;
+	                    const lineBreak = (y, py) => py === null || Math.abs(y - py) > 2.5;
+	                    for (const it of items) {
+	                        if (lineBreak(it.y, prevY)) {
+	                            if (cur.length) {
+	                                cur.sort((a, b) => a.x - b.x);
+	                                lines.push(cur.map((x) => x.str).join(" ").replace(/\s+/g, " ").trim());
+	                            }
+	                            cur = [it];
+	                            prevY = it.y;
+	                        } else {
+	                            cur.push(it);
+	                        }
+	                    }
+	                    if (cur.length) {
+	                        cur.sort((a, b) => a.x - b.x);
+	                        lines.push(cur.map((x) => x.str).join(" ").replace(/\s+/g, " ").trim());
+	                    }
+
+	                    const cleaned = [];
+	                    for (let i = 0; i < lines.length; i++) {
+	                        const line = lines[i].trim();
+	                        if (!line) continue;
+	                        if (/^\d{1,4}$/.test(line)) continue;
+	                        if (cleaned.length) {
+	                            const prev = cleaned[cleaned.length - 1];
+	                            if (/-$/.test(prev) && /^[a-z]/.test(line)) {
+	                                cleaned[cleaned.length - 1] = prev.replace(/-$/, "") + line;
+	                                continue;
+	                            }
+	                        }
+	                        cleaned.push(line);
+	                    }
+	                    return cleaned;
+	                };
+
+	                const headingRegexes = [
+	                    /^Chapter\s+\d+(\b|:)\s*.+/i,
+	                    /^\d+(\.\d+)+\s+[A-Z][^\n]{3,}/,
+	                    /^\d+\s+[A-Z][^\n]{6,}/,
+	                ];
+	                const isHeadingLine = (line) => {
+	                    const s = (line || "").trim();
+	                    if (s.length < 8 || s.length > 120) return false;
+	                    return headingRegexes.some((r) => r.test(s));
+	                };
+
+	                const buildPassagesFromLines = (allLines) => {
+	                    const out = [];
+	                    let buf = [];
+	                    let bufLen = 0;
+	                    let startPageIndex = 0;
+
+	                    const push = () => {
+	                        const text = buf.join(" ").replace(/\s+/g, " ").trim();
+	                        if (text.length >= 140) out.push({ text, pageIndex: startPageIndex });
+	                        buf = [];
+	                        bufLen = 0;
+	                    };
+
+	                    for (const it of allLines) {
+	                        const line = (it.line || "").replace(/\s+/g, " ").trim();
+	                        if (!line) continue;
+	                        if (bufLen === 0) startPageIndex = it.pageIndex;
+	                        if (isHeadingLine(line) && bufLen > 160) push();
+
+	                        buf.push(line);
+	                        bufLen += line.length;
+	                        if (bufLen >= 420 && /[.!?]$/.test(line)) push();
+	                    }
+	                    if (bufLen) push();
+	                    return out;
+	                };
+
+	                const mapChaptersToPassages = (chapList, passList) => {
+	                    const mapped = [];
+	                    for (const ch of chapList) {
+	                        let passageIndex = passList.findIndex((p) => p.pageIndex >= ch.pageIndex);
+	                        if (passageIndex < 0) passageIndex = 0;
+	                        mapped.push({ ...ch, passageIndex });
+	                    }
+	                    mapped.sort((a, b) => a.pageIndex - b.pageIndex);
+	                    return mapped;
+	                };
+
+	                const recomputeCurChap = () => {
+	                    if (!chapters.value.length) return;
+	                    let best = chapters.value[0].title;
+	                    for (const ch of chapters.value) {
+	                        if (ch.passageIndex <= curIdx.value) best = ch.title;
+	                        else break;
+	                    }
+	                    curChap.value = best;
+	                };
+
+	                const setCurrent = (index, chapTitle = null) => {
+	                    if (!passages.value.length) return;
+	                    const clamped = Math.max(0, Math.min(index, passages.value.length - 1));
+	                    curIdx.value = clamped;
+	                    curText.value = passages.value[clamped]?.text || "";
+	                    userInput.value = "";
+	                    errors.value = 0;
+	                    start.value = null;
+	                    isError.value = false;
+	                    if (chapTitle) curChap.value = chapTitle;
+	                    else recomputeCurChap();
+	                    nextTick(() => {
+	                        if (textScrollEl.value) textScrollEl.value.scrollTop = 0;
+	                    });
+	                };
+
+	                const setMode = (m) => {
+	                    mode.value = m;
+	                    if (!passages.value.length) return;
+	                    if (m === "shuf") {
+	                        let r = curIdx.value;
+	                        if (passages.value.length > 1) {
+	                            while (r === curIdx.value) r = Math.floor(Math.random() * passages.value.length);
+	                        }
+	                        setCurrent(r);
+	                    } else {
+	                        recomputeCurChap();
+	                    }
+	                };
+
+	                // --- 核心逻辑 ---
+	                const handleUpload = async (e) => {
+	                    const file = e.target.files?.[0];
+	                    if (!file) return;
+	                    const buf = await file.arrayBuffer();
+	                    const pdf = await pdfjsLib.getDocument({ data: buf }).promise;
+	                    pdfRef.value = pdf;
+
+	                    let outlineChapters = [];
+	                    try {
+	                        const outline = await pdf.getOutline();
+	                        if (outline && outline.length) {
+	                            const flat = flattenOutline(outline);
+	                            const resolved = [];
+	                            for (const o of flat) {
+	                                const title = (o.title || "").trim();
+	                                if (!title || title.length < 4) continue;
+	                                let dest = o.dest;
+	                                if (typeof dest === "string") dest = await pdf.getDestination(dest);
+	                                if (!Array.isArray(dest) || !dest[0]) continue;
+	                                const pageIndex = await pdf.getPageIndex(dest[0]);
+	                                if (Number.isFinite(pageIndex)) resolved.push({ title, pageIndex });
+	                            }
+	                            outlineChapters = dedupeByTitle(resolved);
+	                        }
+	                    } catch (_) {}
+
+	                    const allLines = [];
+	                    const regexChapters = [];
+	                    const seenHeading = new Set();
+	                    for (let i = 1; i <= pdf.numPages; i++) {
+	                        const page = await pdf.getPage(i);
+	                        const lines = await extractLinesFromPage(page);
+	                        for (const line of lines) {
+	                            allLines.push({ pageIndex: i - 1, line });
+	                            if (!outlineChapters.length && isHeadingLine(line)) {
+	                                const key = normalizeTitle(line);
+	                                if (!seenHeading.has(key) && key.length >= 6) {
+	                                    seenHeading.add(key);
+	                                    regexChapters.push({ title: line.trim(), pageIndex: i - 1 });
+	                                }
+	                            }
+	                        }
+	                    }
+
+	                    const builtPassages = buildPassagesFromLines(allLines);
+	                    if (!builtPassages.length) {
+	                        const full = allLines.map((x) => x.line).join(" ").replace(/\s+/g, " ").trim();
+	                        const raw = full.split(/(?<=[.!?])\s+/);
+	                        passages.value = raw.filter((s) => s.length > 140).map((s) => ({ text: s.trim(), pageIndex: 0 }));
+	                    } else {
+	                        passages.value = builtPassages;
+	                    }
+
+	                    const baseChapters = outlineChapters.length ? outlineChapters : dedupeByTitle(regexChapters);
+	                    const mapped = mapChaptersToPassages(baseChapters.length ? baseChapters : [{ title: "Full Text", pageIndex: 0 }], passages.value);
+	                    chapters.value = mapped.length ? mapped : [{ title: "Full Text", pageIndex: 0, passageIndex: 0 }];
+	                    setCurrent(0, chapters.value[0]?.title || "");
+	                };
+
+	                // 全局键盘监听 (解决打字无响应)
+	                onMounted(() => {
+	                    window.addEventListener('keydown', (e) => {
+	                        if (!curText.value) return;
+	                        if (audioCtx.state === 'suspended') audioCtx.resume().catch(() => {});
+	                        // When we are in typing mode, suppress browser defaults (space scroll, enter "click focused button", etc.)
+	                        // We only allow OS/browser shortcuts when Ctrl/Meta/Alt is held.
+	                        if (!e.ctrlKey && !e.metaKey && !e.altKey) {
+	                            if (e.key === " " || e.code === "Space" || e.key === "Enter" || (e.key && e.key.length === 1)) {
+	                                e.preventDefault();
+	                            }
+	                        }
+	                        
+	                        // 功能按键
+	                        if (e.key === 'Tab') { e.preventDefault(); skipSpecial(); return; }
+	                        // no keyboard shortcut for skipping sections (avoid conflicts with normal typing)
+	                        if (e.key === 'Enter') return;
+	                        if (e.key.length !== 1) return;
+
+	                        // 打字匹配
+	                        if (!start.value) start.value = Date.now();
+	                        const target = curText.value[userInput.value.length];
+	                        if (!target) return;
+
+	                        if (e.key.toLowerCase() === target.toLowerCase()) {
+	                            userInput.value += target;
+	                            isError.value = false;
+	                            playPiano(melody[nIdx % melody.length]);
+	                            nIdx++;
+	                            if(userInput.value.length === curText.value.length) setTimeout(() => next(false), 100);
+	                        } else {
+	                            isError.value = true;
+	                            errors.value++;
+	                        }
+	                    });
+	                });
+
+	                const skipChar = () => {
+	                    const target = curText.value[userInput.value.length];
+	                    if(target) {
+	                        userInput.value += target;
+	                        playPiano(melody[nIdx % melody.length]);
+	                        nIdx++;
+	                        if(userInput.value.length === curText.value.length) next(false);
+	                    }
+	                };
+
+	                const skipSpecial = () => {
+	                    if (!curText.value) return;
+	                    const isWord = (ch) => /[A-Za-z0-9]/.test(ch);
+	                    let advanced = 0;
+	                    while (true) {
+	                        const ch = curText.value[userInput.value.length];
+	                        if (!ch) break;
+	                        if (isWord(ch)) break;
+	                        userInput.value += ch;
+	                        advanced++;
+	                        if (advanced >= 48) break;
+	                    }
+	                    if (advanced === 0) return skipChar();
+	                    playPiano(melody[nIdx % melody.length]);
+	                    nIdx++;
+	                    if (userInput.value.length === curText.value.length) next(false);
+	                };
+
+	                const next = (manual) => {
+	                    if (!passages.value.length) return;
+	                    if (mode.value === 'shuf') {
+	                        let r = curIdx.value;
+	                        if (passages.value.length > 1) {
+	                            while (r === curIdx.value) r = Math.floor(Math.random() * passages.value.length);
+	                        }
+	                        setCurrent(r);
+	                        return;
+	                    }
+	                    const nxt = (curIdx.value + 1) % passages.value.length;
+	                    setCurrent(nxt);
+	                };
+
+	                const jumpToChapter = (chap) => {
+	                    mode.value = 'seq';
+	                    const idx = Number.isFinite(chap?.passageIndex) ? chap.passageIndex : 0;
+	                    setCurrent(idx, chap?.title || "");
+	                };
+
+                const getCharStatus = (i) => i < userInput.value.length ? 'completed' : (i === userInput.value.length ? 'current' : 'pending');
+	                const accuracy = computed(() => {
+	                    const t = userInput.value.length + errors.value;
+	                    return t === 0 ? 100 : Math.round((userInput.value.length / t) * 100);
+	                });
+	                const wpm = computed(() => {
+	                    if(!start.value || userInput.value.length < 5) return 0;
+	                    const mins = (Date.now() - start.value) / 60000;
+	                    return Math.round((userInput.value.length/5)/mins);
+	                });
+
+	                return { curText, userInput, accuracy, wpm, handleUpload, getCharStatus, isError, next, chapters, curChap, jumpToChapter, mode, curIdx, passages, setMode, textScrollEl };
+	            }
+	        }).mount('#app');
+
+	        pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
+	        // 翻译集成占位：硅基流动 API Key（保持与“沉浸式翻译”类插件兼容的全局变量形态）
+	        window.SILICON_FLOW_API_KEY = window.SILICON_FLOW_API_KEY || "";
+	    </script>
+</body>
+</html>
