@@ -1,5 +1,10 @@
 # 🎹 ZenType Cyber-Piano Pro
-> **Transform your PDF textbooks into a Cyberpunk Piano Concert.** > **将你的 PDF 课本变成一场赛博朋克钢琴演奏会。**
+
+> **Transform your PDF textbooks into a Cyberpunk Piano Concert.**
+> **将你的 PDF 课本变成一场赛博朋克钢琴演奏会。**
+
+## 🔗 [点此立即体验 / Live Demo](https://evelyn77yu.github.io/cyber-piano/)
+*(请在电脑端浏览器打开以获得最佳体验)*
 
 ---
 
@@ -34,13 +39,13 @@
 
 ## 🚀 How to Play / 如何使用
 
-1.  **Open the link** in your Desktop browser (Chrome/Edge recommended).
+1.  **Open the [Live Demo](https://evelyn77yu.github.io/cyber-piano/)** in your Desktop browser (Chrome/Edge recommended).
 2.  **Upload** your academic PDF textbook.
 3.  **Switch to English Input Method** (Crucial for keyboard event capturing).
 4.  **Start Typing!** Each correct character syncs with the piano melody.
 5.  **Decompress & Review**: Focus on the text while enjoying the music.
 
-1.  在电脑浏览器中**打开链接**（推荐 Chrome 或 Edge）。
+1.  在电脑浏览器中**打开 [在线地址](https://evelyn77yu.github.io/cyber-piano/)**（推荐 Chrome 或 Edge）。
 2.  **上传**你的英文专业课 PDF 课本。
 3.  **切换至英文输入法**（这是确保按键识别准确的关键）。
 4.  **开始打字！** 每一个正确的按键都会同步触发钢琴音效。
@@ -69,6 +74,5 @@ As an international student, I built this to make the struggle with "Deep Learni
 
 由 evelyn77yu 开发。  
 作为一个留学生，我开发这个项目是为了让复习《深度学习基础》的过程变得像弹琴一样有趣。
-
 ---
 感谢Gemini
