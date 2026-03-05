@@ -8,23 +8,201 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
     <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
     <style>
-        :root { --neon: #00F3FF; --magenta: #FF00FF; --bg: #050505; }
-        body { background: var(--bg); color: #EEE; font-family: 'JetBrains Mono', monospace; overflow: hidden; }
-        .sidebar { width: 300px; border-right: 1px solid rgba(0, 243, 255, 0.1); background: #080808; height: 100vh; overflow-y: auto; }
-        .cyber-panel { background: rgba(15, 15, 15, 0.95); border: 1px solid rgba(0, 243, 255, 0.2); border-radius: 16px; }
-        .chapter-item { padding: 10px 20px; font-size: 11px; cursor: pointer; border-bottom: 1px solid rgba(255,255,255,0.02); color: #666; transition: 0.3s; }
-        .chapter-item:hover, .chapter-item.active { color: var(--neon); background: rgba(0, 243, 255, 0.05); border-left: 3px solid var(--neon); }
-        .echo-slot { height: 40px; font-size: 1.1rem; color: var(--neon); text-shadow: 0 0 10px var(--neon); border-bottom: 1px solid rgba(0, 243, 255, 0.1); margin-bottom: 14px; display: flex; align-items: center; overflow: hidden; }
-        .char { position: relative; transition: all 0.1s; color: #333; }
-        .char.completed { color: #FFF; text-shadow: 0 0 8px var(--neon); }
-        .char.current { border-bottom: 2px solid var(--neon); background: rgba(0, 243, 255, 0.1); }
-        .char.error { color: var(--magenta) !important; animation: shake 0.2s; text-shadow: 0 0 10px var(--magenta); }
+        :root { --neon: #00F3FF; --magenta: #FF2BD6; --bg0: #05030A; --bg1: #070D1A; --acid: #B6FF3A; }
+        * { -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
+        body {
+            color: #EAF6FF;
+            font-family: 'JetBrains Mono', monospace;
+            overflow: hidden;
+            background: var(--bg0);
+        }
+        /* User preference: keep page background solid (no gradient overlays). */
+        .fx-layer { display: none; }
+        .fx-layer { position: fixed; inset: 0; pointer-events: none; z-index: 0; }
+        .fx-grid {
+            opacity: 0.35;
+            background-image:
+                linear-gradient(rgba(0, 243, 255, 0.10) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(0, 243, 255, 0.06) 1px, transparent 1px);
+            background-size: 48px 48px;
+            transform: perspective(900px) rotateX(58deg) translateY(22vh);
+            filter: drop-shadow(0 0 12px rgba(0,243,255,0.16));
+            animation: gridMove 18s linear infinite;
+        }
+        @keyframes gridMove { from { background-position: 0 0, 0 0; } to { background-position: 0 480px, 480px 0; } }
+        .fx-scanlines {
+            opacity: 0.18;
+            background: repeating-linear-gradient(
+                to bottom,
+                rgba(255,255,255,0.04),
+                rgba(255,255,255,0.04) 1px,
+                rgba(0,0,0,0) 3px,
+                rgba(0,0,0,0) 7px
+            );
+            mix-blend-mode: overlay;
+            animation: scanFlicker 6s ease-in-out infinite;
+        }
+        @keyframes scanFlicker { 0%, 100% { opacity: 0.12; } 50% { opacity: 0.22; } }
+        .fx-vignette { background: radial-gradient(closest-side, transparent 60%, rgba(0,0,0,0.55) 100%); }
+
+        ::-webkit-scrollbar { width: 10px; height: 10px; }
+        ::-webkit-scrollbar-thumb { background: rgba(0,243,255,0.18); border: 1px solid rgba(0,243,255,0.25); border-radius: 999px; }
+        ::-webkit-scrollbar-thumb:hover { background: rgba(255,43,214,0.22); border-color: rgba(255,43,214,0.35); }
+        ::-webkit-scrollbar-track { background: rgba(0,0,0,0.25); }
+
+        .sidebar {
+            width: 300px;
+            height: 100vh;
+            overflow-y: auto;
+            position: relative;
+            background: rgba(6, 8, 14, 0.96);
+            border-right: 1px solid rgba(0, 243, 255, 0.14);
+            box-shadow: 14px 0 60px rgba(0,243,255,0.08);
+            z-index: 2;
+        }
+        .sidebar:before {
+            content: "";
+            position: absolute;
+            inset: 0;
+            pointer-events: none;
+            display: none;
+        }
+
+        .cyber-panel {
+            position: relative;
+            background:
+                linear-gradient(135deg, rgba(0,243,255,0.08), rgba(255,43,214,0.06), rgba(182,255,58,0.04)),
+                rgba(8, 10, 16, 0.72);
+            border: 1px solid rgba(0, 243, 255, 0.22);
+            border-radius: 18px;
+            box-shadow:
+                0 0 0 1px rgba(255, 43, 214, 0.06) inset,
+                0 18px 70px rgba(0, 0, 0, 0.55),
+                0 0 22px rgba(0, 243, 255, 0.14);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+        }
+        .cyber-panel:before {
+            content: "";
+            position: absolute;
+            inset: -1px;
+            border-radius: 18px;
+            padding: 1px;
+            background: linear-gradient(90deg, rgba(0,243,255,0.55), rgba(255,43,214,0.45), rgba(182,255,58,0.32));
+            mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+            -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+            mask-composite: exclude;
+            -webkit-mask-composite: xor;
+            opacity: 0.42;
+            filter: drop-shadow(0 0 16px rgba(0,243,255,0.14));
+            pointer-events: none;
+        }
+
+        .chapter-item {
+            padding: 10px 18px;
+            font-size: 11px;
+            cursor: pointer;
+            border-bottom: 1px solid rgba(255,255,255,0.03);
+            color: rgba(234,246,255,0.55);
+            transition: transform 0.15s ease, color 0.25s ease, background 0.25s ease;
+        }
+        .chapter-item:hover {
+            color: rgba(234,246,255,0.92);
+            background: linear-gradient(90deg, rgba(0, 243, 255, 0.14), rgba(255, 43, 214, 0.06));
+            transform: translateX(2px);
+        }
+        .chapter-item.active {
+            color: var(--neon);
+            text-shadow: 0 0 12px rgba(0,243,255,0.55);
+            background: linear-gradient(90deg, rgba(0, 243, 255, 0.18), rgba(255, 43, 214, 0.08));
+            border-left: 3px solid var(--neon);
+        }
+
+        .echo-slot {
+            height: 40px;
+            font-size: 1.1rem;
+            color: var(--neon);
+            text-shadow: 0 0 16px rgba(0,243,255,0.55);
+            border-bottom: 1px solid rgba(0, 243, 255, 0.16);
+            margin-bottom: 14px;
+            display: flex;
+            align-items: center;
+            overflow: hidden;
+            background: linear-gradient(90deg, rgba(0,243,255,0.10), rgba(255,43,214,0.06), rgba(182,255,58,0.05));
+            border-radius: 12px;
+            padding: 0 12px;
+        }
+        .char { position: relative; transition: all 0.08s; color: rgba(234,246,255,0.36); }
+        .char.completed {
+            color: #FFFFFF;
+            text-shadow:
+                0 0 10px rgba(0,243,255,0.52),
+                0 0 18px rgba(255,43,214,0.20);
+        }
+        .char.current {
+            border-bottom: 2px solid var(--neon);
+            background: rgba(0, 243, 255, 0.14);
+            box-shadow:
+                0 0 22px rgba(0,243,255,0.22) inset,
+                0 0 18px rgba(0,243,255,0.14);
+        }
+        .char.error { color: var(--magenta) !important; animation: shake 0.2s; text-shadow: 0 0 18px rgba(255,43,214,0.90), 0 0 28px rgba(255,43,214,0.35); }
         @keyframes shake { 0%, 100% { transform: translateX(0); } 25% { transform: translateX(-4px); } 75% { transform: translateX(4px); } }
-        .mode-btn { font-size: 10px; padding: 4px 10px; border: 1px solid #333; border-radius: 4px; transition: 0.3s; }
-        .mode-btn.active { border-color: var(--neon); color: var(--neon); box-shadow: 0 0 10px var(--neon); }
+
+        .mode-btn {
+            font-size: 10px;
+            padding: 5px 12px;
+            border: 1px solid rgba(255,255,255,0.10);
+            border-radius: 8px;
+            color: rgba(234,246,255,0.70);
+            background: rgba(255,255,255,0.03);
+            transition: 0.25s;
+        }
+        .mode-btn:hover { border-color: rgba(0,243,255,0.35); box-shadow: 0 0 18px rgba(0,243,255,0.12); }
+        .mode-btn.active {
+            border-color: rgba(0,243,255,0.70);
+            color: var(--neon);
+            box-shadow: 0 0 22px rgba(0,243,255,0.18), 0 0 0 1px rgba(0,243,255,0.22) inset;
+            background: linear-gradient(90deg, rgba(0,243,255,0.18), rgba(255,43,214,0.10));
+        }
+
+        .import-btn {
+            position: relative;
+        }
+        .import-btn:after {
+            content: "";
+            position: absolute;
+            inset: -1px;
+            border-radius: 12px;
+            padding: 1px;
+            background: linear-gradient(90deg, rgba(0,243,255,0.70), rgba(255,43,214,0.55), rgba(182,255,58,0.40));
+            mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+            -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+            mask-composite: exclude;
+            -webkit-mask-composite: xor;
+            opacity: 0.35;
+            pointer-events: none;
+        }
+        .skip-btn {
+            padding: 6px 10px;
+            border-radius: 10px;
+            border: 1px solid rgba(255,255,255,0.10);
+            background: linear-gradient(90deg, rgba(255,43,214,0.10), rgba(0,243,255,0.10));
+            box-shadow: 0 0 18px rgba(255,43,214,0.10), 0 0 18px rgba(0,243,255,0.08);
+            opacity: 0.85;
+            transition: 0.25s;
+        }
+        .skip-btn:hover {
+            opacity: 1;
+            border-color: rgba(0,243,255,0.35);
+            box-shadow: 0 0 26px rgba(255,43,214,0.14), 0 0 26px rgba(0,243,255,0.12);
+        }
     </style>
 </head>
 <body class="flex">
+    <div class="fx-layer fx-grid"></div>
+    <div class="fx-layer fx-scanlines"></div>
+    <div class="fx-layer fx-vignette"></div>
     <div id="app" class="flex w-full h-screen">
         <aside class="sidebar flex flex-col z-20">
             <div class="p-6 border-b border-white/5">
@@ -45,22 +223,22 @@
 
         <main class="flex-1 flex flex-col items-center justify-start p-12 pt-32 relative">
             <header class="fixed top-8 left-[340px] right-12 flex justify-between items-center cyber-panel px-8 py-4 z-10">
-                <label class="cursor-pointer bg-white/5 border border-white/10 px-5 py-2 rounded-lg text-xs hover:border-cyan-500 transition-all">
-                    IMPORT_PDF_CORE <input type="file" class="hidden" @change="handleUpload">
+                <label class="import-btn cursor-pointer bg-white/5 border border-white/10 px-5 py-2 rounded-lg text-sm font-bold tracking-widest hover:border-cyan-500 transition-all shadow-[0_0_22px_rgba(0,243,255,0.10)] hover:shadow-[0_0_28px_rgba(255,43,214,0.14)]">
+                    IMPORT PDF <input type="file" class="hidden" @change="handleUpload">
                 </label>
                 <div class="flex gap-12 items-center">
                     <div class="text-right"><p class="text-[9px] text-[#FF00FF]">ACCURACY</p><p class="text-2xl font-bold">{{ accuracy }}%</p></div>
-                    <div class="text-right border-l border-white/10 pl-12"><p class="text-[9px] text-[#00F3FF]">WPM</p><p class="text-2xl font-bold">{{ wpm }}</p></div>
+                    <div class="text-right border-l border-white/10 pl-12"><p class="text-[9px] text-[#00F3FF]">WORDS PER MINUTE</p><p class="text-2xl font-bold">{{ wpm }}</p></div>
                 </div>
             </header>
 
-            <div v-if="curText" class="w-full max-w-4xl cyber-panel p-10 mt-4">
-                <div class="echo-slot">
+            <div v-if="curText" class="w-full max-w-4xl cyber-panel p-10 mt-4 h-[calc(100vh-210px)] flex flex-col">
+                <div class="echo-slot shrink-0">
                     <span class="truncate">{{ userInput }}</span>
                     <span class="ml-1 w-2 h-6 bg-cyan-500 animate-pulse shadow-[0_0_10px_#00F3FF]"></span>
                 </div>
 
-                <div ref="textScrollEl" class="text-lg leading-[2.0] select-none mb-6 tracking-tight overflow-y-auto pr-2 max-h-[calc(100vh-270px)]">
+                <div ref="textScrollEl" class="text-lg leading-[2.0] select-none tracking-tight overflow-y-auto pr-2 flex-1">
                     <span v-for="(char, index) in curText" 
                           :key="index" 
                           :class="['char', getCharStatus(index), (isError && index === userInput.length) ? 'error' : '']">
@@ -68,9 +246,9 @@
                     </span>
                 </div>
 
-                <div class="pt-6 border-t border-white/5 flex justify-between items-center opacity-40 text-[10px] tracking-widest">
+                <div class="pt-6 border-t border-white/5 flex justify-between items-center opacity-40 text-[10px] tracking-widest shrink-0">
                     <span>CHAPTER: {{ curChap || 'ANALYZING...' }} · SECTION: {{ curIdx + 1 }}/{{ passages.length }}</span>
-                    <button @click="next(true)" class="hover:text-cyan-400 underline uppercase">Skip Section</button>
+                    <button @click="next(true)" class="skip-btn uppercase">Skip Section</button>
                 </div>
             </div>
             
