@@ -71,4 +71,4 @@ As an international student, I built this to make the struggle with "Deep Learni
 作为一个留学生，我开发这个项目是为了让啃《深度学习基础》的过程变得像弹琴一样有趣。
 
 ---
-该文件由Gemini生成，如有类似，纯属巧合
+感谢Gemini
