@@ -64,11 +64,11 @@
 
 ## 📬 About / 关于作者
 
-Created by ** (evelyn77yu)**.  
+Created by evelyn77yu.  
 As an international student, I built this to make the struggle with "Deep Learning Foundations" a bit more musical.
 
-由 ** (evelyn77yu)** 开发。  
-作为一个留学生，我开发这个项目是为了让啃《深度学习基础》的过程变得像弹琴一样有趣。
+由 evelyn77yu 开发。  
+作为一个留学生，我开发这个项目是为了让复习《深度学习基础》的过程变得像弹琴一样有趣。
 
 ---
 感谢Gemini
