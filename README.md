@@ -1,4 +1,4 @@
-# 🎹 ZenType Cyber-Piano Pro
+# 🎹 Cyber-Piano Pro
 
 > **Transform your PDF textbooks into a Cyberpunk Piano Concert.**
 > **将你的 PDF 课本变成一场赛博朋克钢琴演奏会。**
